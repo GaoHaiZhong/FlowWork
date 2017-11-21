@@ -1,0 +1,129 @@
+<beans xmlns="http://www.springframework.org/schema/beans"
+	   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:mvc="http://www.springframework.org/schema/mvc"
+	   xmlns:context="http://www.springframework.org/schema/context"
+	   xmlns:aop="http://www.springframework.org/schema/aop" xmlns:tx="http://www.springframework.org/schema/tx"
+	   xsi:schemaLocation="http://www.springframework.org/schema/beans
+		http://www.springframework.org/schema/beans/spring-beans-4.1.xsd
+		http://www.springframework.org/schema/mvc
+		http://www.springframework.org/schema/mvc/spring-mvc-4.1.xsd
+		http://www.springframework.org/schema/context
+		http://www.springframework.org/schema/context/spring-context-4.1.xsd
+		http://www.springframework.org/schema/aop
+		http://www.springframework.org/schema/aop/spring-aop-4.1.xsd
+		http://www.springframework.org/schema/tx
+		http://www.springframework.org/schema/tx/spring-tx-4.1.xsd ">
+	<!-- 用于激活那些已经在spring容器里注册过的bean-->
+	<!-- 加载本地的配置文件 -->
+	<context:property-placeholder location="classpath:db.properties" />
+	<!-- 扫描注解Bean -->
+	<context:component-scan base-package="com.ghz.flow">
+		<context:exclude-filter type="annotation" expression="org.springframework.stereotype.Controller"/>
+	</context:component-scan>
+	<bean id="dataSource" class="com.mchange.v2.c3p0.ComboPooledDataSource"
+		  destroy-method="close">
+		<property name="driverClass" value="${jdbc.driver}"/>
+		<property name="jdbcUrl" value="${jdbc.url}"/>
+		<property name="user" value="${jdbc.userName}"/>
+		<property name="password" value="${jdbc.password}"/>
+	</bean>
+
+	<!-- 使用spring的声明式事务控制方法 -->
+	<!-- 对于mybatis的事务控制控制，使用spring jdbc的控制类 -->
+	<bean id="transactionManager"
+		class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+		<property name="dataSource" ref="dataSource" />
+	</bean>
+	<!--支持事物注解-->
+	<tx:annotation-driven transaction-manager="transactionManager"></tx:annotation-driven>
+	<!-- 通知 -->
+	<tx:advice id="txAdvice" transaction-manager="transactionManager">
+		<tx:attributes>   <!-- rollback-for="Exception" 无论什么异常都回滚 -->
+			<tx:method name="save*" propagation="REQUIRED" />
+			<tx:method name="delete*" propagation="REQUIRED" />
+			<tx:method name="update*" propagation="REQUIRED" />
+			<tx:method name="insert*" propagation="REQUIRED" />
+			<tx:method name="get*" propagation="SUPPORTS" read-only="true" />
+			<tx:method name="find*" propagation="SUPPORTS" read-only="true" />
+			<tx:method name="select*" propagation="SUPPORTS" read-only="true" />
+		</tx:attributes>
+	</tx:advice>
+	<!-- aop -->
+	<aop:config>
+		<aop:advisor advice-ref="txAdvice"
+			pointcut="execution(* com.ghz.flow.service.impl.*.*(..))" />
+	</aop:config>
+	<!-- 添加工作流  -->
+	<!--  流程引擎配置对象 -->
+     <bean id="processEngineConfiguration" class="org.activiti.spring.SpringProcessEngineConfiguration">
+         <property name="transactionManager" ref="transactionManager"/>
+         <property name="databaseSchemaUpdate" value="true"/>
+         <!-- 必须注入数据源对象 -->
+         <property name="dataSource" ref="dataSource"/>
+		 <!-- 是否启动jobExecutor -->
+	<!--	 <property name="jobExecutorActivate" value="true" />-->
+		 <!--配置电子邮件-->
+		<!-- <property name="mailServerHost" value="smtp.myself.com"/>
+		 <property name="mailServerPort" value="25"/>-->
+		 <property name="mailServerPort" value="25"/>
+		 <!--<property name="mailServerDefaultFrom" value="${sendUserName}" />
+		 <property name="mailServerUsername" value="${uname}" />
+		 <property name="mailServerPassword" value="${password}" />-->
+		<!-- <property name="mailServerUseSSL" value="false" />-->
+     </bean>
+      <!--  创建流程引擎对象-->
+    <bean  id="processEngine"  class="org.activiti.spring.ProcessEngineFactoryBean">
+        <property name="processEngineConfiguration" ref="processEngineConfiguration"></property>
+    </bean>
+	<bean id="sqlSessionFactory" class="org.mybatis.spring.SqlSessionFactoryBean">
+		<!-- 加载mybatis的配置文件 -->
+		<!-- 自动扫描mapping.xml文件，**表示迭代查找 -->
+		<property name="mapperLocations" value="classpath:com/ghz/flow/base/mapper/**/*.xml" />
+		<property name="dataSource" ref="dataSource"></property>
+		<property name="plugins">
+			<array>
+				<bean class="com.github.pagehelper.PageInterceptor">
+					<property name="properties">
+						<value>
+							helperDialect=mysql
+							reasonable=true
+						</value>
+					</property>
+				</bean>
+			</array>
+		</property>
+	</bean>
+	<!-- mapper扫描器 要符合条件-->
+	<bean class="org.mybatis.spring.mapper.MapperScannerConfigurer">
+		<property name="basePackage" value="com.ghz.flow.base.mapper"></property>
+		<property name="sqlSessionFactoryBeanName" value="sqlSessionFactory"></property>
+	</bean>
+	<!-- activiti的各种服务接口 -->
+	<bean id="repositoryService" factory-bean="processEngine"
+		  factory-method="getRepositoryService" />
+	<bean id="runtimeService" factory-bean="processEngine"
+		  factory-method="getRuntimeService" />
+	<bean id="taskService" factory-bean="processEngine"
+		  factory-method="getTaskService" />
+	<bean id="historyService" factory-bean="processEngine"
+		  factory-method="getHistoryService" />
+	<!--  工作流管理服务-->
+	<bean id="managementService" factory-bean="processEngine"
+		  factory-method="getManagementService" />
+	<bean id="identityService" factory-bean="processEngine"
+		  factory-method="getIdentityService" />
+	<bean id="formService" factory-bean="processEngine"
+		  factory-method="getFormService" />
+
+	<bean id="departAssignee" class="com.ghz.flow.base.service.DepartAssignee">
+	</bean>
+	<bean id="hrAssignee" class="com.ghz.flow.base.service.HrAssignee">
+	</bean>
+	<bean id="emailService" class="com.ghz.flow.base.service.EmailService">
+	</bean>
+	<bean id="againEmailService" class="com.ghz.flow.base.service.AgainEmailService"></bean>
+	<bean id="generalManagerAssignee" class="com.ghz.flow.base.service.GeneralManagerAssignee"></bean>
+    <bean id="generalManagerService" class="com.ghz.flow.base.service.GeneralManagerService"></bean>
+    <bean id="helpAssignee" class="com.ghz.flow.base.service.HelpAssignee"></bean>
+	<bean id="writerException" class="com.ghz.flow.base.service.WriterException"></bean>
+	<bean id="messageCatch"  class="com.ghz.flow.base.service.MessageCatch"></bean>
+</beans>
